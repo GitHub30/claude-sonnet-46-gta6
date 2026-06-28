@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTA6-Style WebGL Game Engine</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    overflow: hidden;
+    font-family: 'Arial', sans-serif;
+    width: 100vw;
+    height: 100vh;
+  }
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+  #ui {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* Crosshair */
+  #crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 16px;
+  }
+  #crosshair::before, #crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255,255,255,0.8);
+  }
+  #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+  #crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  }
+
+  /* Speedometer */
+  #speedo {
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  #speed-value {
+    font-size: 52px;
+    font-weight: 700;
+    letter-spacing: -2px;
+    line-height: 1;
+    color: #fff;
+  }
+  #speed-unit {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  #speed-bar-wrap {
+    width: 180px;
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #speed-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00c8ff, #ff6b35);
+    border-radius: 2px;
+    transition: width 0.1s;
+  }
+  #gear-indicator {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ff6b35;
+  }
+
+  /* Minimap */
+  #minimap-container {
+    position: absolute;
+    bottom: 30px;
+    left: 30px;
+  }
+  #minimap {
+    width: 160px;
+    height: 160px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(0,0,0,0.5);
+    box-shadow: 0 0 20px rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+  }
+  #minimap-canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Info panel */
+  #info-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: rgba(255,255,255,0.9);
+    font-size: 13px;
+    line-height: 1.8;
+    min-width: 220px;
+  }
+  #info-panel h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #fff;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 8px;
+  }
+  .key {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 2px;
+  }
+  #fps-counter {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    font-family: monospace;
+  }
+
+  /* Vehicle prompt */
+  #vehicle-prompt {
+    position: absolute;
+    bottom: 40%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    padding: 8px 20px;
+    color: #fff;
+    font-size: 14px;
+    display: none;
+    white-space: nowrap;
+  }
+
+  /* Loading screen */
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #loading h1 {
+    font-size: 48px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  #loading .sub {
+    font-size: 14px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+  #loading-bar-wrap {
+    width: 300px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  #loading-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff6b35, #ffd700);
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  #loading-status {
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Click-to-start overlay */
+  #click-to-start {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    cursor: pointer;
+  }
+  #click-to-start h2 {
+    font-size: 28px;
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  #click-to-start p {
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+  }
+
+  /* Film grain overlay */
+  #grain {
+    position: fixed;
+    inset: 0;
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 50;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+  }
+
+  /* Vignette */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <h1>OPEN WORLD</h1>
+  <div class="sub">WebGL2 Game Engine</div>
+  <div id="loading-bar-wrap">
+    <div id="loading-bar"></div>
+  </div>
+  <div id="loading-status">Initializing...</div>
+</div>
+
+<div id="click-to-start">
+  <h2>クリックしてゲームを開始</h2>
+  <p>マウスでカメラを操作 | WASD で移動 | SPACE でジャンプ</p>
+</div>
+
+<canvas id="canvas"></canvas>
+<div id="vignette"></div>
+<div id="grain"></div>
+
+<div id="ui">
+  <div id="crosshair"></div>
+
+  <div id="fps-counter">-- FPS</div>
+
+  <div id="info-panel">
+    <h3>🎮 操作方法</h3>
+    <div><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 移動</div>
+    <div><span class="key">Space</span> ジャンプ / ブレーキ</div>
+    <div><span class="key">E</span> 乗降車</div>
+    <div><span class="key">Shift</span> ダッシュ</div>
+    <div style="margin-top:8px;color:rgba(255,255,255,0.4);font-size:11px;">
+      クリックでマウスロック | Esc で解除
+    </div>
+  </div>
+
+  <div id="hud">
+    <div id="speedo">
+      <div id="gear-indicator">D</div>
+      <div id="speed-value">0</div>
+      <div id="speed-unit">km/h</div>
+      <div id="speed-bar-wrap">
+        <div id="speed-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="minimap-container">
+    <div id="minimap">
+      <canvas id="minimap-canvas" width="160" height="160"></canvas>
+    </div>
+  </div>
+
+  <div id="vehicle-prompt">
+    <span class="key">E</span> 乗車する
+  </div>
+</div>
+
+<script type="module">
+import { Game } from './game.js';
+
+const loadingEl  = document.getElementById('loading');
+const loadingBar = document.getElementById('loading-bar');
+const loadingStatus = document.getElementById('loading-status');
+const clickToStart  = document.getElementById('click-to-start');
+const fpsCounter    = document.getElementById('fps-counter');
+const speedoEl      = document.getElementById('speedo');
+const speedValueEl  = document.getElementById('speed-value');
+const speedBarEl    = document.getElementById('speed-bar');
+const gearEl        = document.getElementById('gear-indicator');
+const vehiclePrompt = document.getElementById('vehicle-prompt');
+const minimapCanvas = document.getElementById('minimap-canvas');
+const minimapCtx    = minimapCanvas.getContext('2d');
+
+// Resize canvas
+const canvas = document.getElementById('canvas');
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => {
+  resize();
+  if (window.game) window.game.renderer.resize(canvas.width, canvas.height);
+});
+
+// Loading simulation
+async function simulateLoading() {
+  const steps = [
+    [10, 'Compiling shaders...'],
+    [25, 'Generating terrain...'],
+    [45, 'Building city...'],
+    [60, 'Loading vehicles...'],
+    [75, 'Setting up physics...'],
+    [90, 'Preparing textures...'],
+    [100, 'Ready!'],
+  ];
+  for (const [pct, msg] of steps) {
+    loadingBar.style.width = pct + '%';
+    loadingStatus.textContent = msg;
+    await new Promise(r => setTimeout(r, 180 + Math.random() * 200));
+  }
+}
+
+async function init() {
+  try {
+    await simulateLoading();
+
+    const game = new Game(canvas);
+    window.game = game;
+
+    // Hide loading, show click-to-start
+    loadingEl.style.display = 'none';
+    clickToStart.style.display = 'flex';
+
+    clickToStart.addEventListener('click', () => {
+      clickToStart.style.display = 'none';
+      canvas.requestPointerLock();
+      game.start();
+      startHUD(game);
+    }, { once: true });
+
+  } catch (err) {
+    loadingStatus.textContent = 'Error: ' + err.message;
+    loadingStatus.style.color = '#ff4444';
+    console.error(err);
+  }
+}
+
+function startHUD(game) {
+  let frames = 0, lastFPSTime = performance.now();
+
+  // Minimap setup
+  const MINI_SCALE = 1.2; // pixels per world unit
+  const MINI_SIZE  = 160;
+
+  function updateMinimap() {
+    const ctx = minimapCtx;
+    const player = game.player;
+    const px = player.body.position.x;
+    const pz = player.body.position.z;
+
+    ctx.clearRect(0, 0, MINI_SIZE, MINI_SIZE);
+
+    // Background
+    ctx.fillStyle = 'rgba(20,20,20,0.9)';
+    ctx.beginPath();
+    ctx.arc(MINI_SIZE/2, MINI_SIZE/2, MINI_SIZE/2, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(MINI_SIZE/2, MINI_SIZE/2, MINI_SIZE/2, 0, Math.PI*2);
+    ctx.clip();
+    ctx.translate(MINI_SIZE/2, MINI_SIZE/2);
+    ctx.rotate(-player.yaw);
+
+    // Roads (lines)
+    ctx.strokeStyle = 'rgba(80,80,80,0.8)';
+    ctx.lineWidth = 2 * MINI_SCALE;
+    // Grid roads
+    for (let i = -3; i <= 3; i++) {
+      const rx = (i * 40 - px) * MINI_SCALE;
+      const rz = (0 - pz) * MINI_SCALE;
+      ctx.beginPath();
+      ctx.moveTo(rx, -150 * MINI_SCALE - pz*MINI_SCALE + pz*MINI_SCALE);
+      // simplified road dots
+      ctx.fillStyle = 'rgba(80,80,80,0.5)';
+      ctx.fillRect(rx-1, -MINI_SIZE, 3, MINI_SIZE*2);
+    }
+
+    // Buildings
+    ctx.fillStyle = 'rgba(100,100,120,0.7)';
+    for (let bx = -5; bx <= 5; bx++) {
+      for (let bz = -5; bz <= 5; bz++) {
+        const wx = (bx * 40 - px) * MINI_SCALE;
+        const wz = (bz * 40 - pz) * MINI_SCALE;
+        ctx.fillRect(wx-4, wz-4, 8, 8);
+      }
+    }
+
+    // Vehicles
+    for (const v of game.vehicles) {
+      const vx = (v.body.position.x - px) * MINI_SCALE;
+      const vz = (v.body.position.z - pz) * MINI_SCALE;
+      if (Math.abs(vx) > MINI_SIZE || Math.abs(vz) > MINI_SIZE) continue;
+      ctx.fillStyle = v === player.inVehicle ? '#00ff88' : '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(vx, vz, 3, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Player dot
+    ctx.fillStyle = '#00ccff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI*2);
+    ctx.fill();
+    // Direction arrow
+    ctx.strokeStyle = '#00ccff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -8);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Circle border
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(MINI_SIZE/2, MINI_SIZE/2, MINI_SIZE/2-1, 0, Math.PI*2);
+    ctx.stroke();
+  }
+
+  function hudLoop() {
+    frames++;
+    const now = performance.now();
+    if (now - lastFPSTime >= 500) {
+      const fps = Math.round(frames / ((now - lastFPSTime) / 1000));
+      fpsCounter.textContent = fps + ' FPS';
+      frames = 0;
+      lastFPSTime = now;
+    }
+
+    // Speedometer
+    if (game.player.inVehicle) {
+      const v = game.player.inVehicle;
+      const kmh = Math.abs(v.speed * 3.6);
+      speedoEl.style.display = 'flex';
+      speedValueEl.textContent = Math.round(kmh);
+      speedBarEl.style.width   = Math.min(100, kmh / game.vehicles[0].maxSpeed / 3.6 * 100) + '%';
+      gearEl.textContent = v.speed < 0 ? 'R' : v.speed < 0.5 ? 'N' : 'D';
+    } else {
+      speedoEl.style.display = 'none';
+    }
+
+    // Vehicle prompt
+    if (!game.player.inVehicle) {
+      const pp = game.player.body.position;
+      let nearVehicle = false;
+      for (const v of game.vehicles) {
+        if (pp.sub(v.body.position).length() < 5) { nearVehicle = true; break; }
+      }
+      vehiclePrompt.style.display = nearVehicle ? 'block' : 'none';
+    } else {
+      vehiclePrompt.style.display = 'none';
+    }
+
+    updateMinimap();
+    requestAnimationFrame(hudLoop);
+  }
+  hudLoop();
+}
+
+init();
+</script>
+</body>
+</html>
